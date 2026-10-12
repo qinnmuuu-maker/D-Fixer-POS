@@ -47,3 +47,20 @@ test('buildSyncQueuePayload keeps transaction totals and items stable for idempo
   assert.equal(payload.items[0].quantity, 2);
   assert.equal(payload.change_amount, 10000);
 });
+
+test('helper functions reject malformed values without throwing', () => {
+  const { salt, hash } = hashPin('123456');
+  assert.equal(verifyPin(undefined, salt, hash), false);
+  assert.equal(verifyPin('123456', '', hash), false);
+  assert.equal(calculateCartTotal([{ price: '10', quantity: '2' }, null, { price: 'bad', quantity: 1 }]), 20);
+  assert.deepEqual(buildSyncQueuePayload(null), {
+    id: undefined,
+    receipt_number: undefined,
+    subtotal: 0,
+    amount_received: 0,
+    change_amount: 0,
+    status: undefined,
+    created_at: undefined,
+    items: [],
+  });
+});

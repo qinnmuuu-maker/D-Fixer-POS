@@ -5,12 +5,33 @@ function createClientId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
 
-const deviceCode = localStorage.getItem('dfixer-device-code') || createClientId();
+function readStorage(key, fallback = null) {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeJsonParse(value, fallback) {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return parsed === undefined ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+const deviceCode = readStorage('dfixer-device-code') || createClientId();
 localStorage.setItem('dfixer-device-code', deviceCode);
 
 const state = {
-  token: localStorage.getItem('dfixer-token') || '',
-  user: JSON.parse(localStorage.getItem('dfixer-user') || 'null'),
+  token: readStorage('dfixer-token', ''),
+  user: safeJsonParse(readStorage('dfixer-user'), null),
   products: [],
   categories: [],
   cart: [],
@@ -20,6 +41,7 @@ const state = {
   business: null,
   receipt: null,
   pendingCheckout: null,
+  checkoutInProgress: false,
   deviceRegistered: false,
 };
 
@@ -348,49 +370,113 @@ async function finalizeTransaction() {
     return;
   }
 
-  const amount = Number(refs.cashAmount.value || 0);
-  const total = state.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  if (amount < total) {
-    alert('Uang yang diterima belum mencukupi total pembayaran.');
-    return;
-  }
-
-  const payload = {
-    items: state.cart.map((item) => ({ id: item.id, quantity: item.quantity })),
-    amount_received: amount,
-    payment_method: 'cash',
-  };
-  const requestFingerprint = JSON.stringify(payload);
-  if (state.pendingCheckout?.fingerprint !== requestFingerprint) {
-    state.pendingCheckout = { fingerprint: requestFingerprint, key: createClientId() };
-  }
-
-  let result;
-  try {
-    result = await request('/api/transactions', {
-      method: 'POST',
-      headers: { 'Idempotency-Key': state.pendingCheckout.key },
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    alert(error.message);
-    return;
-  }
-
-  const receiptText = `Transaksi ${result.transaction.receipt_number}\nTotal: ${currency(result.transaction.subtotal)}\nUang diterima: ${currency(result.transaction.amount_received)}\nKembalian: ${currency(result.transaction.change_amount)}`;
-  state.cart = [];
-  state.pendingCheckout = null;
-  refs.cashAmount.value = '';
-  renderCart();
-  alert(`${receiptText}\n\nTransaksi tersimpan. Struk dapat dicetak ulang dari Riwayat.`);
+  if (state.checkoutInProgress) return;
+  state.checkoutInProgress = true;
+  refs.completeSaleBtn.disabled = true;
+  let printWindow = null;
 
   try {
-    await loadTransactions();
-    if (state.user?.role === 'owner' || state.user?.role === 'supervisor') {
-      await loadReports();
+    printWindow = window.open('', '_blank', 'width=420,height=640');
+    let currentProducts;
+    try {
+      currentProducts = await request('/api/products');
+    } catch (error) {
+      printWindow?.close();
+      alert(`Tidak dapat memeriksa harga terbaru: ${error.message}`);
+      return;
     }
-  } catch (error) {
-    alert(`Transaksi tersimpan, tetapi tampilan data gagal diperbarui: ${error.message}`);
+
+    const currentProductsById = new Map(currentProducts.map((product) => [product.id, product]));
+    const unavailableItems = state.cart.filter((item) => !currentProductsById.has(item.id));
+    if (unavailableItems.length) {
+      printWindow?.close();
+      alert(`Produk berikut sudah tidak aktif atau tidak tersedia: ${unavailableItems.map((item) => item.name).join(', ')}. Hapus dari keranjang sebelum melanjutkan.`);
+      return;
+    }
+
+    let pricesChanged = false;
+    state.cart = state.cart.map((item) => {
+      const currentProduct = currentProductsById.get(item.id);
+      if (Number(item.price) !== Number(currentProduct.price) || item.name !== currentProduct.name) {
+        pricesChanged = true;
+        return { ...currentProduct, quantity: item.quantity };
+      }
+      return item;
+    });
+
+    if (pricesChanged) {
+      printWindow?.close();
+      state.pendingCheckout = null;
+      renderCart();
+      alert('Harga atau nama produk berubah. Periksa kembali total dan uang yang diterima sebelum menyelesaikan transaksi.');
+      return;
+    }
+
+    const amount = Number(refs.cashAmount.value || 0);
+    const total = state.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    if (!Number.isSafeInteger(total)) {
+      printWindow?.close();
+      alert('Total transaksi melebihi batas yang dapat diproses.');
+      return;
+    }
+    if (!Number.isSafeInteger(amount) || amount < total) {
+      printWindow?.close();
+      alert('Uang yang diterima belum mencukupi total pembayaran.');
+      return;
+    }
+
+    const payload = {
+      items: state.cart.map((item) => ({ id: item.id, quantity: item.quantity })),
+      amount_received: amount,
+      payment_method: 'cash',
+    };
+    const requestFingerprint = JSON.stringify(payload);
+    if (state.pendingCheckout?.fingerprint !== requestFingerprint) {
+      state.pendingCheckout = { fingerprint: requestFingerprint, key: createClientId() };
+    }
+
+    let result;
+    try {
+      result = await request('/api/transactions', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': state.pendingCheckout.key },
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      printWindow?.close();
+      alert(error.message);
+      return;
+    }
+
+    const receiptText = `Transaksi ${result.transaction.receipt_number}\nTotal: ${currency(result.transaction.subtotal)}\nUang diterima: ${currency(result.transaction.amount_received)}\nKembalian: ${currency(result.transaction.change_amount)}`;
+    state.cart = [];
+    state.pendingCheckout = null;
+    refs.cashAmount.value = '';
+    renderCart();
+
+    let printMessage = 'Jendela cetak diblokir. Struk dapat dicetak ulang dari Riwayat.';
+    if (printWindow) {
+      try {
+        await printTransactionReceipt(result.transaction.id, printWindow);
+        printMessage = 'Dialog cetak struk telah dibuka.';
+      } catch (error) {
+        printWindow.close();
+        printMessage = `Transaksi tersimpan, tetapi struk gagal dicetak: ${error.message}. Cetak ulang dari Riwayat.`;
+      }
+    }
+    alert(`${receiptText}\n\nTransaksi tersimpan. ${printMessage}`);
+
+    try {
+      await loadTransactions();
+      if (state.user?.role === 'owner' || state.user?.role === 'supervisor') {
+        await loadReports();
+      }
+    } catch (error) {
+      alert(`Transaksi tersimpan, tetapi tampilan data gagal diperbarui: ${error.message}`);
+    }
+  } finally {
+    state.checkoutInProgress = false;
+    refs.completeSaleBtn.disabled = false;
   }
 }
 
@@ -898,13 +984,34 @@ function renderPrintDocument(printWindow, receiptText, paperWidth) {
       <body><img alt="Struk D'Fixer POS" src="${receiptImage}" /></body>
     </html>`);
   printWindow.document.close();
-  const printWhenReady = () => printWindow.requestAnimationFrame(() => {
-    printWindow.focus();
-    printWindow.print();
+  return new Promise((resolve, reject) => {
+    const image = printWindow.document.querySelector('img');
+    const printWhenReady = () => {
+      if (!image.naturalWidth) {
+        reject(new Error('Gambar struk tidak dapat dimuat.'));
+        return;
+      }
+      printWindow.requestAnimationFrame(() => {
+        printWindow.focus();
+        printWindow.print();
+        resolve();
+      });
+    };
+    if (image.complete) {
+      printWhenReady();
+    } else {
+      image.addEventListener('load', printWhenReady, { once: true });
+      image.addEventListener('error', () => reject(new Error('Gambar struk tidak dapat dimuat.')), { once: true });
+    }
   });
-  const image = printWindow.document.querySelector('img');
-  if (image.complete) printWhenReady();
-  else image.addEventListener('load', printWhenReady, { once: true });
+}
+
+async function printTransactionReceipt(transactionId, printWindow) {
+  const result = await request('/api/print/receipt', {
+    method: 'POST',
+    body: JSON.stringify({ transaction_id: transactionId }),
+  });
+  await renderPrintDocument(printWindow, result.receipt, result.printer);
 }
 
 async function printReceipt(transactionId) {
@@ -914,11 +1021,7 @@ async function printReceipt(transactionId) {
     return;
   }
   try {
-    const result = await request('/api/print/receipt', {
-      method: 'POST',
-      body: JSON.stringify({ transaction_id: transactionId }),
-    });
-    renderPrintDocument(printWindow, result.receipt, result.printer);
+    await printTransactionReceipt(transactionId, printWindow);
   } catch (error) {
     printWindow.close();
     alert(error.message);

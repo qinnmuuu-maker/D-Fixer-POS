@@ -1,20 +1,42 @@
 const crypto = require('crypto');
 
+function normalizePin(value) {
+  return String(value ?? '').trim();
+}
+
 function hashPin(pin, salt = crypto.randomBytes(16).toString('hex')) {
-  const derived = crypto.pbkdf2Sync(String(pin), salt, 100000, 64, 'sha512');
-  return { salt, hash: derived.toString('hex') };
+  const safeSalt = String(salt ?? crypto.randomBytes(16).toString('hex'));
+  const derived = crypto.pbkdf2Sync(normalizePin(pin), safeSalt, 100000, 64, 'sha512');
+  return { salt: safeSalt, hash: derived.toString('hex') };
 }
 
 function verifyPin(pin, salt, hash) {
-  const { hash: derived } = hashPin(pin, salt);
-  const expected = Buffer.from(hash, 'hex');
-  const actual = Buffer.from(derived, 'hex');
-  if (expected.length !== actual.length) return false;
-  return crypto.timingSafeEqual(expected, actual);
+  const pinValue = normalizePin(pin);
+  const saltValue = String(salt ?? '');
+  const hashValue = String(hash ?? '');
+  if (!saltValue || !hashValue) return false;
+  if (!/^[0-9a-fA-F]+$/.test(hashValue)) return false;
+
+  try {
+    const { hash: derived } = hashPin(pinValue, saltValue);
+    const expected = Buffer.from(hashValue, 'hex');
+    const actual = Buffer.from(derived, 'hex');
+    if (expected.length !== actual.length) return false;
+    return crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
 }
 
 function calculateCartTotal(items) {
-  return items.reduce((total, item) => total + (Number(item.price || 0) * Number(item.quantity || 0)), 0);
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((total, item) => {
+    if (!item || typeof item !== 'object') return total;
+    const price = Number(item.price);
+    const quantity = Number(item.quantity);
+    if (!Number.isFinite(price) || !Number.isFinite(quantity)) return total;
+    return total + (price * quantity);
+  }, 0);
 }
 
 function buildReceiptNumber() {
@@ -25,21 +47,24 @@ function buildReceiptNumber() {
 }
 
 function buildSyncQueuePayload(transaction) {
+  const payload = transaction && typeof transaction === 'object' ? transaction : {};
+  const items = Array.isArray(payload.items) ? payload.items : [];
+
   return {
-    id: transaction.id,
-    receipt_number: transaction.receipt_number,
-    subtotal: Number(transaction.subtotal || 0),
-    amount_received: Number(transaction.amount_received || 0),
-    change_amount: Number(transaction.change_amount || 0),
-    status: transaction.status,
-    created_at: transaction.created_at,
-    items: Array.isArray(transaction.items) ? transaction.items.map((item) => ({
-      product_id: item.product_id,
-      product_name: item.product_name,
-      quantity: Number(item.quantity || 0),
-      unit_price: Number(item.unit_price || 0),
-      subtotal: Number(item.subtotal || 0),
-    })) : [],
+    id: payload.id,
+    receipt_number: payload.receipt_number,
+    subtotal: Number(payload.subtotal ?? 0),
+    amount_received: Number(payload.amount_received ?? 0),
+    change_amount: Number(payload.change_amount ?? 0),
+    status: payload.status,
+    created_at: payload.created_at,
+    items: items.map((item) => ({
+      product_id: item?.product_id,
+      product_name: item?.product_name,
+      quantity: Number(item?.quantity ?? 0),
+      unit_price: Number(item?.unit_price ?? 0),
+      subtotal: Number(item?.subtotal ?? 0),
+    })),
   };
 }
 

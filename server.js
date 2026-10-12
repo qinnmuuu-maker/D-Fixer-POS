@@ -21,16 +21,31 @@ function requireAsync(fn) {
   };
 }
 
+function normalizePin(value) {
+  return String(value ?? '').trim();
+}
+
 function hashPin(pin, salt = crypto.randomBytes(16).toString('hex')) {
-  const derived = crypto.pbkdf2Sync(pin, salt, 100000, 64, 'sha512');
-  return { salt, hash: derived.toString('hex') };
+  const safeSalt = String(salt ?? crypto.randomBytes(16).toString('hex'));
+  const derived = crypto.pbkdf2Sync(normalizePin(pin), safeSalt, 100000, 64, 'sha512');
+  return { salt: safeSalt, hash: derived.toString('hex') };
 }
 
 function verifyPin(pin, salt, hash) {
-  const { hash: derived } = hashPin(pin, salt);
-  const expected = Buffer.from(hash, 'hex');
-  const actual = Buffer.from(derived, 'hex');
-  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  const pinValue = normalizePin(pin);
+  const saltValue = String(salt ?? '');
+  const hashValue = String(hash ?? '');
+  if (!saltValue || !hashValue) return false;
+  if (!/^[0-9a-fA-F]+$/.test(hashValue)) return false;
+
+  try {
+    const { hash: derived } = hashPin(pinValue, saltValue);
+    const expected = Buffer.from(hashValue, 'hex');
+    const actual = Buffer.from(derived, 'hex');
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
 }
 
 function uid() {

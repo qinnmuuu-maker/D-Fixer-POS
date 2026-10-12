@@ -10,7 +10,7 @@ Dokumen kebutuhan produk: [PRD.md](./PRD.md).
 - Pencatatan transaksi lokal dengan nomor struk unik.
 - Laporan penjualan dasar.
 - Pengaturan usaha dan struk.
-- Cetak ulang struk transaksi melalui dialog cetak perangkat dengan tata letak kertas 58 mm atau 80 mm.
+- Cetak otomatis setelah transaksi selesai dan cetak ulang struk melalui dialog cetak perangkat dengan tata letak kertas 58 mm atau 80 mm.
 - Hak akses owner, supervisor, dan kasir diterapkan di API serta dibatasi tampilannya sesuai peran.
 - Laporan dapat difilter berdasarkan rentang tanggal, menghitung penjualan dari transaksi selesai, dan menampilkan pembatalan terpisah.
 - Riwayat transaksi dapat dicari berdasarkan nomor struk dan rentang tanggal.
@@ -20,7 +20,7 @@ Dokumen kebutuhan produk: [PRD.md](./PRD.md).
 
 Untuk browser, hubungkan printer thermal melalui pengaturan sistem lalu pilih layanan cetak yang kompatibel di dialog cetak Android. Browser menyerahkan halaman/gambar ke Android Print Framework; print service harus mengubahnya ke format yang didukung printer. Memasangkan printer Bluetooth atau merender struk sebagai gambar saja tidak menjamin kompatibilitas. Pastikan gunakan print service resmi yang mendukung model printer.
 
-Kegagalan cetak tidak membuat transaksi baru; struk transaksi dapat dicetak ulang dari menu Riwayat.
+Setelah transaksi selesai, dialog cetak struk akan dibuka otomatis. Izinkan pop-up browser agar dialog dapat muncul. Kegagalan atau pop-up yang diblokir tidak membatalkan transaksi; struk transaksi dapat dicetak ulang dari menu Riwayat.
 
 Pemilik dapat mengelola produk, akun, perangkat, pengaturan, cloud, serta backup. Supervisor dapat melihat riwayat dan laporan. Kasir dapat memproses transaksi dan hanya melihat riwayat transaksinya sendiri. Perubahan hak akses divalidasi di server, bukan hanya dengan menyembunyikan menu.
 
@@ -34,12 +34,16 @@ Cadangan ekspor menggunakan enkripsi AES-256-GCM dengan kunci turunan scrypt. Gu
 
 ## Cara menjalankan
 1. Instal dependensi: `npm install`
-2. Jalankan aplikasi: `npm start`
-3. Buka `http://localhost:3000`
-4. Login dengan akun default:
+2. (Opsional) Bangun bundle frontend: `npm run build`. Perintah `npm start` juga membangun bundle secara otomatis.
+3. Jalankan aplikasi: `npm start`
+4. Buka `http://localhost:3000`
+5. Login dengan akun default:
    - Username: `owner`
    - PIN: `123456`
-5. Segera ubah PIN bawaan dari menu **Akun & Perangkat**. PIN hanya diterima 4-6 angka.
+6. Segera ubah PIN bawaan dari menu **Akun & Perangkat**. PIN hanya diterima 4-6 angka.
+
+Webpack menggabungkan JavaScript frontend menjadi `public/build/app.js`. Berkas hasil build dibuat otomatis saat menjalankan `npm start`; stylesheet tetap disajikan sebagai berkas CSS terpisah.
+Proyek membutuhkan Node.js 20.17.0 atau lebih baru.
 
 ## Verifikasi
 - `npm test` untuk menjalankan uji unit dan integrasi API.
