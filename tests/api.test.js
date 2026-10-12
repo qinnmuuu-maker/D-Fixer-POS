@@ -58,10 +58,14 @@ test('POS API enforces roles and persists transaction, cancellation, and encrypt
   let serverOutput = '';
   child.stdout.on('data', (chunk) => { serverOutput += chunk.toString(); });
   child.stderr.on('data', (chunk) => { serverOutput += chunk.toString(); });
+  let restoreChild;
+  let restoreServerOutput = '';
   t.after(async () => {
-    if (child.exitCode === null) {
-      child.kill('SIGTERM');
-      await new Promise((resolve) => child.once('exit', resolve));
+    for (const serverChild of [child, restoreChild].filter(Boolean)) {
+      if (serverChild.exitCode === null) {
+        serverChild.kill('SIGTERM');
+        await new Promise((resolve) => serverChild.once('exit', resolve));
+      }
     }
     await new Promise((resolve) => cloudServer.close(resolve));
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -228,6 +232,98 @@ test('POS API enforces roles and persists transaction, cancellation, and encrypt
   });
   assert.equal(backup.format, 'dfixer-pos-encrypted-backup');
   assert.equal(JSON.stringify(backup).includes('pin_hash'), false);
+
+  const restoreAppDir = path.join(tempDir, 'restore-app');
+  fs.mkdirSync(path.join(restoreAppDir, 'public'), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '..', 'server.js'), path.join(restoreAppDir, 'server.js'));
+  fs.copyFileSync(path.join(__dirname, '..', 'package.json'), path.join(restoreAppDir, 'package.json'));
+  fs.cpSync(path.join(__dirname, '..', 'public'), path.join(restoreAppDir, 'public'), { recursive: true });
+  const restorePortServer = net.createServer();
+  await new Promise((resolve, reject) => {
+    restorePortServer.once('error', reject);
+    restorePortServer.listen(0, '127.0.0.1', resolve);
+  });
+  const restorePort = restorePortServer.address().port;
+  await new Promise((resolve) => restorePortServer.close(resolve));
+  restoreChild = spawn(process.execPath, ['server.js'], {
+    cwd: restoreAppDir,
+    env: {
+      ...process.env,
+      NODE_PATH: path.join(__dirname, '..', 'node_modules'),
+      PORT: String(restorePort),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  restoreChild.stdout.on('data', (chunk) => { restoreServerOutput += chunk.toString(); });
+  restoreChild.stderr.on('data', (chunk) => { restoreServerOutput += chunk.toString(); });
+  const restoreBaseUrl = `http://127.0.0.1:${restorePort}`;
+  const restoreDeviceCode = 'restore-api-test-device';
+  const restoreApi = async (route, { method = 'GET', body, token, expected = 200 } = {}) => {
+    const response = await fetch(`${restoreBaseUrl}${route}`, {
+      method,
+      headers: {
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(token ? { 'x-auth-token': token } : {}),
+        'x-device-code': restoreDeviceCode,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = await response.json();
+    assert.equal(response.status, expected, `${method} ${route}: ${JSON.stringify(data)}`);
+    return data;
+  };
+  const restoreDeadline = Date.now() + 10000;
+  let restoreConnectionError;
+  let restoreServerReady = false;
+  while (Date.now() < restoreDeadline) {
+    if (restoreChild.exitCode !== null) throw new Error(`Restore test server exited early: ${restoreServerOutput}`);
+    try {
+      const response = await fetch(`${restoreBaseUrl}/api/health`);
+      if (response.ok) {
+        restoreServerReady = true;
+        break;
+      }
+    } catch (error) {
+      restoreConnectionError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(restoreServerReady, true,
+    `Restore test server did not become ready: ${restoreServerOutput}; ${restoreConnectionError?.message || 'no connection response'}`);
+  const restoreLogin = await restoreApi('/api/login', {
+    method: 'POST',
+    body: { username: 'owner', pin: '123456', device_code: restoreDeviceCode },
+  });
+  await restoreApi('/api/session', { token: restoreLogin.token });
+  await restoreApi('/api/devices/register', {
+    method: 'POST',
+    token: restoreLogin.token,
+    body: { device_name: 'Perangkat Pemulihan', device_code: restoreDeviceCode },
+    expected: 201,
+  });
+  await restoreApi('/api/users', {
+    method: 'POST',
+    token: restoreLogin.token,
+    body: { username: 'restore_only', full_name: 'Akun Lokal Tujuan', role: 'cashier', pin: '456789' },
+    expected: 201,
+  });
+  const crossDeviceRestore = await restoreApi('/api/backup/import', {
+    method: 'POST',
+    token: restoreLogin.token,
+    body: { confirm_restore: true, backup, passphrase: 'kata-sandi-uji-yang-kuat' },
+  });
+  assert.equal(crossDeviceRestore.restored.transactions, 2);
+  const restoredOwner = await restoreApi('/api/login', {
+    method: 'POST',
+    body: { username: 'owner', pin: '123456', device_code: restoreDeviceCode },
+  });
+  const restoredUsers = await restoreApi('/api/users', { token: restoredOwner.token });
+  assert.equal(restoredUsers.some((user) => user.username === 'cashier_test'), true);
+  assert.equal(restoredUsers.some((user) => user.username === 'restore_only'), true);
+  const restoredTransactions = await restoreApi('/api/transactions', { token: restoredOwner.token });
+  assert.equal(restoredTransactions.length, 2);
+  assert.deepEqual(new Set(restoredTransactions.map((transaction) => transaction.cashier_name)), new Set(['Pemilik', 'Kasir Uji']));
+
   await api('/api/users/not-an-id', {
     token: owner,
     method: 'PUT',

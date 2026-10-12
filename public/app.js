@@ -838,9 +838,51 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function createReceiptCanvas(receiptText, paperWidth) {
+  const paperWidthDots = paperWidth === '80mm' ? 576 : 384;
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Perangkat ini tidak mendukung format grafis untuk mencetak struk.');
+  }
+
+  const padding = 16;
+  const fontSize = 24;
+  const lineHeight = 32;
+  const maxTextWidth = paperWidthDots - padding * 2;
+  context.font = `${fontSize}px monospace`;
+  const lines = receiptText.split('\n').flatMap((sourceLine) => {
+    const wrapped = [];
+    let remaining = sourceLine;
+    while (context.measureText(remaining).width > maxTextWidth) {
+      let breakAt = remaining.length;
+      while (breakAt > 1 && context.measureText(remaining.slice(0, breakAt)).width > maxTextWidth) {
+        breakAt -= 1;
+      }
+      const spaceAt = remaining.lastIndexOf(' ', breakAt);
+      if (spaceAt > 0) breakAt = spaceAt;
+      wrapped.push(remaining.slice(0, breakAt));
+      remaining = remaining.slice(breakAt).trimStart();
+    }
+    wrapped.push(remaining);
+    return wrapped;
+  });
+
+  canvas.width = paperWidthDots;
+  canvas.height = padding * 2 + lines.length * lineHeight;
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#000';
+  context.font = `${fontSize}px monospace`;
+  context.textBaseline = 'top';
+  lines.forEach((line, index) => context.fillText(line, padding, padding + index * lineHeight));
+  return canvas;
+}
+
 function renderPrintDocument(printWindow, receiptText, paperWidth) {
   const width = paperWidth === '80mm' ? '80mm' : '58mm';
-  printWindow.addEventListener('load', () => printWindow.print(), { once: true });
+  const receiptImage = createReceiptCanvas(receiptText, paperWidth).toDataURL('image/png');
+
   printWindow.document.write(`<!DOCTYPE html>
     <html lang="id">
       <head>
@@ -848,15 +890,21 @@ function renderPrintDocument(printWindow, receiptText, paperWidth) {
         <title>Struk D'Fixer POS</title>
         <style>
           @page { size: ${width} auto; margin: 0; }
-          body { width: ${width}; margin: 0; padding: 3mm; color: #000; font: 10pt/1.35 monospace; }
-          pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+          body { width: ${width}; margin: 0; color: #000; }
+          img { display: block; width: ${width}; height: auto; }
           @media screen { body { margin: 12px auto; box-shadow: 0 0 6px #999; } }
         </style>
       </head>
-      <body><pre>${escapeHtml(receiptText)}</pre></body>
+      <body><img alt="Struk D'Fixer POS" src="${receiptImage}" /></body>
     </html>`);
   printWindow.document.close();
-  printWindow.focus();
+  const printWhenReady = () => printWindow.requestAnimationFrame(() => {
+    printWindow.focus();
+    printWindow.print();
+  });
+  const image = printWindow.document.querySelector('img');
+  if (image.complete) printWhenReady();
+  else image.addEventListener('load', printWhenReady, { once: true });
 }
 
 async function printReceipt(transactionId) {
@@ -865,7 +913,6 @@ async function printReceipt(transactionId) {
     alert('Jendela cetak diblokir. Izinkan pop-up untuk mencetak struk.');
     return;
   }
-
   try {
     const result = await request('/api/print/receipt', {
       method: 'POST',

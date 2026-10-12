@@ -816,21 +816,36 @@ app.post('/api/backup/import', authMiddleware, requireAsync(async (req, res) => 
     return res.status(400).json({ error: error.message });
   }
 
-  const tableOrder = [
-    ['business', backup.business],
-    ['categories', backup.categories],
-    ['users', backup.users],
-    ['products', backup.products],
-    ['transactions', backup.transactions],
-    ['transaction_items', backup.transactionItems],
-    ['receipt_settings', backup.receiptSettings],
-    ['devices', backup.devices],
-    ['cloud_settings', backup.cloudSettings],
-    ['sync_queue', backup.syncQueue],
-    ['audit_logs', backup.auditLogs],
-  ];
-
   await withDatabaseTransaction(async (tx) => {
+    const userIdMap = new Map();
+    const users = [];
+    for (const user of backup.users) {
+      const existing = await tx.get('SELECT id FROM users WHERE username = ?', [user.username]);
+      const id = existing?.id || user.id;
+      userIdMap.set(user.id, id);
+      users.push({ ...user, id });
+    }
+
+    const tableOrder = [
+      ['business', backup.business],
+      ['categories', backup.categories],
+      ['users', users],
+      ['products', backup.products],
+      ['transactions', backup.transactions.map((row) => ({
+        ...row,
+        cashier_id: userIdMap.get(row.cashier_id) || row.cashier_id,
+      }))],
+      ['transaction_items', backup.transactionItems],
+      ['receipt_settings', backup.receiptSettings],
+      ['devices', backup.devices],
+      ['cloud_settings', backup.cloudSettings],
+      ['sync_queue', backup.syncQueue],
+      ['audit_logs', backup.auditLogs.map((row) => ({
+        ...row,
+        user_id: userIdMap.get(row.user_id) || row.user_id,
+      }))],
+    ];
+
     for (const [key, rows] of tableOrder) {
       const columns = backupTables[key === 'transaction_items' ? 'transactionItems'
         : key === 'receipt_settings' ? 'receiptSettings'

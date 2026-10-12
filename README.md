@@ -18,7 +18,9 @@ Dokumen kebutuhan produk: [PRD.md](./PRD.md).
 - Cloud opsional dengan antrean sinkronisasi aman.
 - Arsitektur offline-first berbasis SQLite.
 
-Untuk mencetak, hubungkan printer thermal Bluetooth pada perangkat melalui pengaturan sistem, lalu pilih printer tersebut pada dialog cetak browser. Kegagalan cetak tidak membuat transaksi baru; struk transaksi dapat dicetak ulang dari menu Riwayat.
+Untuk browser, hubungkan printer thermal melalui pengaturan sistem lalu pilih layanan cetak yang kompatibel di dialog cetak Android. Browser menyerahkan halaman/gambar ke Android Print Framework; print service harus mengubahnya ke format yang didukung printer. Memasangkan printer Bluetooth atau merender struk sebagai gambar saja tidak menjamin kompatibilitas. Pastikan gunakan print service resmi yang mendukung model printer.
+
+Kegagalan cetak tidak membuat transaksi baru; struk transaksi dapat dicetak ulang dari menu Riwayat.
 
 Pemilik dapat mengelola produk, akun, perangkat, pengaturan, cloud, serta backup. Supervisor dapat melihat riwayat dan laporan. Kasir dapat memproses transaksi dan hanya melihat riwayat transaksinya sendiri. Perubahan hak akses divalidasi di server, bukan hanya dengan menyembunyikan menu.
 
@@ -28,7 +30,7 @@ Pada penggunaan pertama, login sebagai pemilik lalu daftarkan perangkat yang sed
 
 Cloud tidak menandai data sebagai terkirim secara simulasi. Untuk mengaktifkannya, sediakan endpoint batch HTTPS yang menerima `POST` berisi `{ "events": [{ "event_id", "entity_type", "entity_id", "payload" }] }`, autentikasi Bearer, dan mengembalikan `{ "accepted_ids": ["..."] }`. Endpoint harus memproses `event_id` secara idempoten. Atur `DFIXER_CLOUD_TOKEN` pada lingkungan server, lalu isi URL endpoint tersebut pada menu Cloud. Item hanya ditandai tersinkron setelah ID-nya diakui endpoint; item yang tidak diakui tetap dalam antrean lokal.
 
-Cadangan ekspor menggunakan enkripsi AES-256-GCM dengan kunci turunan scrypt. Gunakan kata sandi 12-256 karakter, simpan secara terpisah dari file cadangan, dan uji pemulihan secara berkala. Pemulihan menggabungkan atau memperbarui baris berdasarkan ID; data lokal yang tidak terdapat dalam cadangan tidak dihapus.
+Cadangan ekspor menggunakan enkripsi AES-256-GCM dengan kunci turunan scrypt. Gunakan kata sandi 12-256 karakter, simpan secara terpisah dari file cadangan, dan uji pemulihan secara berkala. Pemulihan menggabungkan atau memperbarui baris berdasarkan ID; akun pengguna dengan ID berbeda dicocokkan berdasarkan username dan referensi transaksi serta audit disesuaikan. Data lokal yang tidak terdapat dalam cadangan tidak dihapus.
 
 ## Cara menjalankan
 1. Instal dependensi: `npm install`
