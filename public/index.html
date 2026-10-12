@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D'Fixer POS</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <meta name="theme-color" content="#111827" />
+  </head>
+  <body>
+    <div id="loginScreen" class="screen active">
+      <div class="login-card">
+        <h1>D'Fixer POS</h1>
+        <p>Kasir dan manajemen transaksi offline</p>
+        <form id="loginForm">
+          <label>
+            Username
+            <input type="text" id="username" value="owner" required />
+          </label>
+          <label>
+            PIN
+            <input type="password" id="pin" autocomplete="current-password" required />
+          </label>
+          <button type="submit">Masuk</button>
+        </form>
+        <div id="loginError" class="error-box hidden"></div>
+      </div>
+    </div>
+
+    <div id="appShell" class="screen hidden">
+      <aside class="sidebar">
+        <h2>D'Fixer</h2>
+        <nav>
+          <button class="nav-btn active" data-target="cashier">Kasir</button>
+          <button class="nav-btn" data-target="products">Produk</button>
+          <button class="nav-btn" data-target="transactions">Riwayat</button>
+          <button class="nav-btn" data-target="reports">Laporan</button>
+          <button class="nav-btn" data-target="accounts">Akun</button>
+          <button class="nav-btn" data-target="cloud">Cloud</button>
+          <button class="nav-btn" data-target="backup">Backup</button>
+          <button class="nav-btn" data-target="settings">Pengaturan</button>
+          <button id="logoutBtn" class="logout">Keluar</button>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <section id="cashier" class="panel active">
+          <div class="panel-header">
+            <h3>Kasir</h3>
+            <div id="userBadge" class="badge"></div>
+          </div>
+
+          <div class="cashier-layout">
+            <div class="catalog-panel">
+              <div class="catalog-toolbar">
+                <input id="productSearch" type="search" placeholder="Cari produk" />
+              </div>
+              <div id="productGrid" class="product-grid"></div>
+            </div>
+
+            <div class="cart-panel">
+              <h4>Keranjang</h4>
+              <div id="cartItems" class="cart-items"></div>
+              <div class="totals">
+                <div><span>Subtotal</span><strong id="subtotalValue">Rp 0</strong></div>
+                <div><span>Uang Diterima</span><input id="cashAmount" type="number" min="0" step="1000" /></div>
+                <div><span>Kembalian</span><strong id="changeValue">Rp 0</strong></div>
+              </div>
+              <div class="cart-actions">
+                <button id="completeSaleBtn" class="primary">Selesaikan</button>
+                <button id="clearCartBtn" class="secondary">Bersihkan</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="products" class="panel hidden">
+          <div class="panel-header">
+            <h3>Produk</h3>
+          </div>
+          <div class="form-grid">
+            <div>
+              <label>Nama Produk<input id="productName" type="text" placeholder="Nama produk" /></label>
+            </div>
+            <div>
+              <label>Kategori<select id="productCategory"></select></label>
+            </div>
+            <div>
+              <label>Harga<input id="productPrice" type="number" min="0" step="1000" /></label>
+            </div>
+            <div class="action-row">
+              <button id="saveProductBtn" class="primary">Simpan Produk</button>
+              <button id="cancelProductEditBtn" class="secondary hidden">Batal Ubah</button>
+            </div>
+          </div>
+          <div id="productList" class="table-list"></div>
+          <div class="setting-card">
+            <h4>Kategori</h4>
+            <div class="form-grid">
+              <label>Nama kategori<input id="categoryName" type="text" maxlength="60" /></label>
+              <button id="addCategoryBtn" class="primary">Tambah Kategori</button>
+            </div>
+            <div id="categoryList" class="table-list"></div>
+          </div>
+        </section>
+
+        <section id="transactions" class="panel hidden">
+          <div class="panel-header">
+            <h3>Riwayat Transaksi</h3>
+          </div>
+          <div class="form-grid">
+            <label>Cari nomor transaksi<input id="transactionSearch" type="search" placeholder="DF-..." /></label>
+            <label>Dari tanggal<input id="transactionFrom" type="date" /></label>
+            <label>Sampai tanggal<input id="transactionTo" type="date" /></label>
+            <button id="applyTransactionFilterBtn" class="primary">Cari Transaksi</button>
+          </div>
+          <div id="transactionList" class="table-list"></div>
+        </section>
+
+        <section id="reports" class="panel hidden">
+          <div class="panel-header">
+            <h3>Laporan</h3>
+          </div>
+          <div class="form-grid">
+            <label>Dari tanggal<input id="reportFrom" type="date" /></label>
+            <label>Sampai tanggal<input id="reportTo" type="date" /></label>
+            <button id="applyReportFilterBtn" class="primary">Tampilkan</button>
+          </div>
+          <div class="report-summary" id="reportSummary"></div>
+          <div id="reportTable" class="table-list"></div>
+        </section>
+
+        <section id="accounts" class="panel hidden">
+          <div class="panel-header">
+            <h3>Akun &amp; Perangkat</h3>
+          </div>
+          <div class="settings-grid">
+            <div class="setting-card account-management">
+              <h4>Buat Akun Baru</h4>
+              <label>Username<input id="newUserName" type="text" /></label>
+              <label>Nama Lengkap<input id="newUserFullName" type="text" /></label>
+              <label>Role<select id="newUserRole"><option value="cashier">Kasir</option><option value="supervisor">Supervisor</option><option value="owner">Pemilik</option></select></label>
+              <label>PIN<input id="newUserPin" type="password" /></label>
+              <div class="action-row">
+                <button id="createUserBtn" class="primary">Tambah User</button>
+              </div>
+            </div>
+            <div class="setting-card">
+              <h4>Daftar Perangkat</h4>
+              <label>Nama Perangkat<input id="deviceName" type="text" placeholder="Tablet kasir 1" /></label>
+              <label>Kode perangkat ini<input id="deviceCode" type="text" readonly /></label>
+              <div class="action-row">
+                <button id="registerDeviceBtn" class="primary">Daftarkan</button>
+              </div>
+              <div id="deviceList" class="table-list"></div>
+            </div>
+          </div>
+          <div id="userList" class="table-list"></div>
+        </section>
+
+        <section id="cloud" class="panel hidden">
+          <div class="panel-header">
+            <h3>Cloud &amp; Sinkronisasi</h3>
+          </div>
+          <div class="settings-grid">
+            <div class="setting-card">
+              <h4>Status Cloud</h4>
+              <p>Sinkronisasi memerlukan endpoint kompatibel dan DFIXER_CLOUD_TOKEN pada server aplikasi. Transaksi tetap tersimpan lokal bila layanan tidak tersedia.</p>
+              <label class="switch-row"><input id="cloudEnabled" type="checkbox" /> Aktifkan cloud</label>
+              <label>Endpoint batch HTTPS<input id="cloudApiUrl" type="url" placeholder="https://cloud.example.com/api/sync/batch" /></label>
+              <div id="cloudStatus" class="status-box">Status sinkronisasi: belum dijalankan.</div>
+            </div>
+            <div class="setting-card">
+              <h4>Antrean Sinkronisasi</h4>
+              <div id="cloudQueue" class="queue-box">Antrean kosong.</div>
+              <div class="action-row">
+                <button id="saveCloudBtn" class="primary">Simpan</button>
+                <button id="syncNowBtn" class="secondary">Sinkronkan</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="backup" class="panel hidden">
+          <div class="panel-header">
+            <h3>Pencadangan &amp; Pemulihan</h3>
+          </div>
+          <div class="settings-grid">
+            <div class="setting-card">
+              <h4>Cadangan Lokal</h4>
+              <p>Cadangan dienkripsi dengan kata sandi. Simpan file dan kata sandinya di tempat aman; jika perangkat rusak, cadangan di perangkat saja tidak cukup.</p>
+              <label>Kata sandi cadangan<input id="backupPassphrase" type="password" minlength="12" autocomplete="new-password" /></label>
+              <div class="action-row">
+                <button id="exportBackupBtn" class="primary">Ekspor Cadangan</button>
+              </div>
+            </div>
+            <div class="setting-card">
+              <h4>Pemulihan</h4>
+              <label>File cadangan<input id="backupFileInput" type="file" accept="application/json" /></label>
+              <label>Kata sandi cadangan<input id="restorePassphrase" type="password" minlength="12" autocomplete="new-password" /></label>
+              <div class="action-row">
+                <button id="restoreBackupBtn" class="secondary">Pulihkan</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="settings" class="panel hidden">
+          <div class="panel-header">
+            <h3>Pengaturan</h3>
+          </div>
+          <div class="settings-grid">
+            <div class="setting-card">
+              <h4>Usaha</h4>
+              <label>Nama Usaha<input id="businessName" type="text" /></label>
+              <label>Alamat<input id="businessAddress" type="text" /></label>
+              <label>Telepon<input id="businessPhone" type="text" /></label>
+            </div>
+            <div class="setting-card">
+              <h4>Struk</h4>
+              <label>Footer<input id="receiptFooter" type="text" /></label>
+              <label>Lebar Kertas<select id="receiptWidth"><option value="58mm">58 mm</option><option value="80mm">80 mm</option></select></label>
+              <p>Pencetakan menggunakan dialog cetak perangkat. Pilih printer thermal Bluetooth yang sudah terhubung.</p>
+            </div>
+          </div>
+          <div class="action-row">
+            <button id="saveSettingsBtn" class="primary">Simpan</button>
+            <button id="printTestBtn" class="secondary">Tes Cetak</button>
+          </div>
+          <div id="systemStatus" class="status-box">Status database belum diperiksa.</div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

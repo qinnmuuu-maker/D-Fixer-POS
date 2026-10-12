@@ -1,0 +1,27 @@
+{
+  "name": "d-fixer-pos",
+  "version": "1.0.0",
+  "description": "Manajemen cafetaria.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test",
+    "start": "node server.js",
+    "owner:reset": "node scripts/reset-owner-pin.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qinnmuuu-maker/D-Fixer-POS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/qinnmuuu-maker/D-Fixer-POS/issues"
+  },
+  "homepage": "https://github.com/qinnmuuu-maker/D-Fixer-POS#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "sqlite3": "^6.0.1"
+  }
+}
